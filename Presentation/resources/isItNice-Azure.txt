@@ -1,0 +1,377 @@
+--------------------------------------------------------
+blockeduser
+
+function insert(item, user, request) {
+
+    request.execute();
+
+}
+
+function update(item, user, request) {
+
+    request.execute();
+
+}
+
+function del(id, user, request) {
+
+    request.execute();
+
+}
+
+function read(query, user, request) {
+
+    request.execute();
+
+}
+
+--------------------------------------------------------
+channel
+
+function insert(item, user, request) {
+    var liveId = request.parameters.LiveId;
+    var channelTable = tables.getTable('Channel');
+    channelTable.where({ UserId : user.userId }).read({
+        success: function(results) {
+            if(results.length === 0) {
+                // do a insert
+                item.UserId = user.userId;
+                item.LiveId = liveId;
+                request.execute();
+            }
+            else if(results.length === 1) {
+                // do a update
+                results[0].uri = item.uri;
+                channelTable.update(results[0], {
+                    success: function(updateResult) {
+                        request.respond(statusCodes.OK, 'Channel Updated');
+                    }
+                });
+            }
+            else {
+                console.err('This should not be possible');
+                request.respond(statusCodes.INTERNAL_SERVER_ERROR, 'duplicate channel');
+            }
+        }
+    });
+}
+
+function update(item, user, request) {
+
+    request.execute();
+
+}
+
+function del(id, user, request) {
+
+    request.execute();
+
+}
+
+function read(query, user, request) {
+    var friendId = request.parameters['fId'];
+    if(friendId === undefined) {
+        query.where({ UserId : user.userId });
+    }
+    else {
+        query.where({ id: friendId });
+    }
+    request.execute({
+        success: function(channelList) {
+            if(friendId !== undefined) {
+                // remove any sensitive information from friend
+                for(var i=0; i<channelList.length; i=i+1) {
+                    delete channelList[i].UserId;
+                }
+            }
+            request.respond();
+        }
+    });
+
+}
+
+
+--------------------------------------------------------
+comment
+
+function insert(item, user, request) {
+    item.CreatedAt = new Date();
+    
+    var channelTable = tables.getTable('Channel');
+    channelTable.where({ UserId: user.userId }).read({
+        success: function(users) {
+            if(users.length === 1) {
+                item.FromId = users[0].id;
+                request.execute({
+                    success: function() {
+                        request.respond();
+                        sendNotifications();
+                    }
+                });
+            }
+            else {
+                request.respond(statusCodes.INTERNAL_SERVER_ERROR, 'duplicate channel');
+            }
+        }
+    });
+    
+    function sendNotifications() {
+        var channelTable = tables.getTable('Channel');
+        // Only select the channels of the request owner
+        channelTable.where({ id: item.RequestOwnerId }).read({
+            success: function(channels) {
+                channels.forEach(function(channel) {
+                    push.wns.sendRaw(channel.uri, JSON.stringify(item));
+                });
+            }
+        });
+    }
+}
+
+function update(item, user, request) {
+
+    request.execute();
+
+}
+
+function del(id, user, request) {
+
+    request.execute();
+
+}
+
+function read(query, user, request) {
+    var isMystuff = (request.parameters['mode'] === 'mystuff');
+    var channelTable = tables.getTable('Channel');
+    channelTable.where({ UserId: user.userId }).read({
+        success: function(users) {
+            if(users.length === 1) {
+                var cond = null;
+                if(isMystuff) {
+                    // The comments written by the current user.
+                    cond = { FromId: users[0].id };
+                }
+                else {
+                    // The comments to owned NiceRequests.
+                    cond = { RequestOwnerId: users[0].id };
+                }
+                query.where(cond);
+                request.execute();
+            }
+            else {
+                request.respond(statusCodes.INTERNAL_SERVER_ERROR, 'user does not exists!');
+            }
+        }
+    });
+}
+
+
+
+--------------------------------------------------------
+nicerequest
+
+
+function insert(item, user, request) {
+    item.UserId = user.userId;
+    item.CreatedAt = new Date();
+    var friendIds = getFriendIds(request.parameters);
+    if(friendIds.length === 0) {
+        request.respond(statusCodes.BAD_REQUEST, 'A request must be send to at least one friend');
+    }
+    else {
+        // The request is valid. Save it and send notifications 
+        var channelTable = tables.getTable('Channel');
+        channelTable.where({ UserId: user.userId }).read({
+            success: function(myChannels) {
+                if(myChannels.length === 1) {
+                    item.OwnerId = myChannels[0].id;
+                    item.ToFriends = friendIds.join(';');
+                    request.execute({
+                        success: function() {
+                            request.respond();
+                            sendNotifications();
+                        }
+                    });
+                }
+                else {
+                    request.respond(statusCodes.INTERNAL_SERVER_ERROR, 'user does not exist?!');
+                }
+            }
+        });
+    }
+    
+    function getFriendIds(friendList) {
+        var friendIds = [];
+        for (var attrName in friendList) {
+            if (friendList.hasOwnProperty(attrName) && attrName.indexOf('f') === 0) {
+                var fid = friendList[attrName];
+                // This is not cool! protection against sql injection should be done with repared statements
+                fid = fid.replace("'", "");
+                friendIds.push(fid);
+            }
+        }
+        return friendIds;
+    }
+    
+    function sendNotifications() {
+        friendIds = "'" + friendIds.join("', '") + "'";
+        var sql = "SELECT * FROM Channel c " +
+                "WHERE c.LiveId IN (" + friendIds + ")";
+        mssql.query(sql, {
+            success: function(channels) {
+                channels.forEach(function(channel) {
+                    push.wns.sendRaw(channel.uri, JSON.stringify({
+                        notificationNiceRequestId: item.id,
+                        OwnerId: item.OwnerId 
+                    }));
+                });
+            }
+        });
+    }
+}
+
+function update(item, user, request) {
+
+    request.execute();
+
+}
+
+function del(id, user, request) {
+
+    request.execute();
+
+}
+
+function read(query, user, request) {
+    var lastId = request.parameters['lastRequestID'];
+    var isMystuff = (request.parameters['mode'] === 'mystuff');
+    var channelTable = tables.getTable('Channel');
+    channelTable.where({ UserId: user.userId }).read({
+        success: function(users) {
+            if(users.length === 1) {
+                if(isMystuff) {
+                    query.where({ OwnerId: users[0].id });
+                }
+                else {
+                    query.where(function(liveId) {
+                        return this.ToFriends !== null && this.ToFriends.indexOf(liveId) >= 0;
+                    }, users[0].LiveId);
+                }
+                request.execute({
+                    success: function(requestList) {
+                        if(lastId !== undefined) {
+                            for(var i=0; i<requestList.length; i=i+1) {
+                                if(requestList[i].id <= lastId) {
+                                    delete requestList[i].Image;
+                                }
+                            }
+                        }
+                        request.respond();
+                    }
+                });
+            }
+            else {
+                request.respond(statusCodes.INTERNAL_SERVER_ERROR, 'user does not exist?!');
+            }
+        }
+    });
+  
+}
+
+
+
+
+=====================================================================================================
+=====================================================================================================
+=====================================================================================================
+Permisions
+
+--------------------------------------------------------
+
+
+--------------------------------------------------------
+channel
+
+INSERT PERMISSION
+Only Authenticated Users
+
+UPDATE PERMISSION
+Only Scripts and Admins
+
+DELETE PERMISSION
+Only Scripts and Admins
+
+READ PERMISSION
+Only Authenticated Users
+
+--------------------------------------------------------
+comment
+
+INSERT PERMISSION
+Only Authenticated Users
+
+UPDATE PERMISSION
+Only Scripts and Admins
+
+DELETE PERMISSION
+Only Scripts and Admins
+
+READ PERMISSION
+Only Authenticated Users
+
+--------------------------------------------------------
+nicerequest
+
+INSERT PERMISSION
+Anybody with the Application Key
+
+UPDATE PERMISSION
+Only Authenticated Users
+
+DELETE PERMISSION
+Only Scripts and Admins
+
+READ PERMISSION
+Anybody with the Application Key
+
+
+=====================================================================================================
+=====================================================================================================
+=====================================================================================================
+Columns
+
+--------------------------------------------------------
+blocked
+
+id
+
+--------------------------------------------------------
+channel
+id	bigint(MSSQL)	Indexed
+uri	string	
+LiveId	string	
+UserId	string	
+
+--------------------------------------------------------
+comment
+id	bigint(MSSQL)	Indexed
+Message	string	
+Score	number	
+CreatedAt	date	
+FromId	number	
+RequestOwnerId	number	
+RequestId	number	
+NoScore	number	
+
+--------------------------------------------------------
+nicerequest
+id	bigint(MSSQL)	Indexed
+PriceValue	number	
+Currency	string	
+Description	string	
+IsClosed	boolean	
+Image	string	
+CreatedAt	date	
+OwnerId	number	
+UserId	string	
+ToFriends	string
