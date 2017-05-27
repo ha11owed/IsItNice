@@ -14,8 +14,8 @@ The application enables its users to:
 Yes, the application was developed in a pre-WhatsApp world :bowtie: \
 
 The application has the following components:
-*   A WinRT client application with support for push/pull azure notifications
-*   A Windows Azure backend for
+* A WinRT client application with support for push/pull azure notifications
+* A Windows Azure backend for
   * the authentification
   * connecting users based on their contact lists
   * storing the images of the users
