@@ -16,13 +16,14 @@ Yes, the application was developed in a pre-WhatsApp world :bowtie:
 The application has the following components:
 *   A WinRT client application with support for push/pull azure notifications
 *   A Windows Azure backend for
-..* the authentification
-..* connecting users based on their contact lists
-..* storing the images of the users
-..* pushing notifications to the client
+  * the authentification
+  * connecting users based on their contact lists
+  * storing the images of the users
+  * pushing notifications to the client
 
 ## Repository structure:
 
+```
 .
 +-- _config.yml
 +-- Code\
@@ -33,5 +34,6 @@ The application has the following components:
 +-- Presentation\
 |   +-- resources\
 |   +-- Win8 App Presentation.pdf
+```
 
 As seen in the presentation, the team consisted of 3 members.
